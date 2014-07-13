@@ -1,15 +1,28 @@
 #!/bin/bash
 
+export LANG=en_US                                                                      
+
 DAY=1
 END_DAY=60
 
-QUOTE="Usually decided by luck..."
+QUOTE='Usually decided by luck...'
+QUOTES=("Buy when prices are low and sell when cops have raided some druglords.")
+QUOTES+=("Be aware of dirty cops. They will demand a bribe to let you go.")
+QUOTES+=("It's smart to quickly get rid of all your debt.")
+QUOTES+=("Buy low, sell high!")
+QUOTES+=("Remember to check your health meter")
+QUOTES+=("Body armor will only save your life that one time.")
+QUOTES+=("Upgrade your trenchcoat space in the store.")
+QUOTES+=("Buying and selling Heroin and Cocaine can be very profitable.")
+QUOTES+=("Guns can save your life.")
+QUOTES+=("If you are smart, then you deposit your cash regurlary ;-)")
+
 NAME=
 
 CASH=150000
 BANK=0
 DEBT=150000
-DEBT_INTEREST=1.24
+DEBT_INTEREST=1.08
 
 WEAPON_RACK=
 
@@ -29,6 +42,7 @@ DRUGS_MAX_PRICE=(1800 16000 1700 795 43000 5600 960 6500 920 2400 560)
 SELECTED_DRUG=
 
 PRICES=()
+LOWEST_PRICE=
 
 TRENCHCOAT_SPACE_USED=0
 TRENCHCOAT_SPACE=100
@@ -52,6 +66,15 @@ function str_repeat()
 	seq  -f "$1" -s '' $2; echo -n
 }
 
+function is_numeric()
+{
+	re='^[0-9]+$'
+	if ! [[ $1 =~ $re ]] ; then
+	   return 1
+	fi
+	return 0
+}
+
 function in_array()
 {
 	local n=$#
@@ -66,11 +89,57 @@ function in_array()
     return 1
 }
 
+function highscore_list()
+{
+	if [ ! -f "/tmp/highscore.src" ]; then
+		touch "/tmp/highscore.src"
+	fi
+	names=()
+	scores=()
+	while read line
+	do
+		arr=$(echo $line | tr "=" "\n")
+		i=0
+
+		for x in $arr
+		do
+		    if [ "$i" -eq "0" ]; then
+		    	i=1
+		    	names+=("$x")
+		    else
+		    	i=0
+		    	scores+=("$x")
+		    fi
+		done
+	done < '/tmp/highscore.src'
+
+	echo '|                                                                                                    |'
+	echo '|  == HIGHSCORE ==                                                                                   |'
+	echo '|                                                                                                    |'
+	for key in "${!names[@]}"; do
+		name=${names[$key]}
+		name=$(echo $name | tr "." " ")
+		score=${scores[$key]}
+		echo -ne "|   $name"
+		#str_repeat " " `expr 97 - ${#name}`
+		str_repeat " " `expr 30 - ${#name}`
+		printScore=$(printf "%'d\n" $score)
+		echo -ne "-  $ $printScore"
+		str_repeat " " `expr 62 - ${#printScore}`
+		echo -ne "|\n"
+	done
+	echo '|                                                                                                    |'
+}
+
 function highscore()
 {
-	if [ -d "highscore.scr" ]; then
-		touch "highscore.src"
-	fi
+	clear
+	game_header
+	highscore_list
+	footer
+	echo ''
+	read -p "Press any key to return to menu..." any
+	menu
 }
 
 function get_locations()
@@ -85,16 +154,19 @@ function get_locations()
 		if [ $ODD = 0 ]; then
 			ODD=1
 			if [ $key = 0 ]; then
-				echo -en "|   Cash: \$$CASH"
-				str_repeat " " `expr 32 - ${#CASH}`
+				printCash=$(printf "%'d\n" $CASH)
+				echo -en "|   Cash: \$$printCash"
+				str_repeat " " `expr 32 - ${#printCash}`
 			fi
 			if [ $key = 2 ]; then
-				echo -en "|   Bank: \$$BANK"
-				str_repeat " " `expr 32 - ${#BANK}`
+				printBank=$(printf "%'d\n" $BANK)
+				echo -en "|   Bank: \$$printBank"
+				str_repeat " " `expr 32 - ${#printBank}`
 			fi
 			if [ $key = 4 ]; then
-				echo -en "|   Debt: \$$DEBT"
-				str_repeat " " `expr 32 - ${#DEBT}`
+				printDebt=$(printf "%'d\n" $DEBT)
+				echo -en "|   Debt: \$$printDebt"
+				str_repeat " " `expr 32 - ${#printDebt}`
 			fi
 			if [ $SELECTED_LOCATION = $key ]; then
 				echo -en "|     [x] ${LOCATIONS[$key]}"
@@ -128,6 +200,7 @@ function set_price()
 		max=${DRUGS_MAX_PRICE[key]}
 
 		price=$((RANDOM%max+$min))
+
 		if [ "$insanePriceSet" -eq "0" -a "$DAY" -gt "5" ]; then
 			randPrice=$((RANDOM%100+0))
 			if [ "$randPrice" -lt "3" ]; then
@@ -142,6 +215,14 @@ function set_price()
 				fi
 			fi
 		fi
+		if [ "$price" -le "0" ]; then
+			price=1
+		fi
+
+		if [ -z "$LOWEST_PRICE" ] || [ "$price" -lt "$LOWEST_PRICE" ]; then
+			LOWEST_PRICE=$price
+		fi
+
 		arr+=("$price")
 	done
 	arrRes=$(echo ${arr[@]})
@@ -162,8 +243,9 @@ function get_price()
 	for elt in "${PRICES[@]}";do eval $elt;done
 	priceKey='d'$DAY'['$1']'
 	price=$(eval echo \${$priceKey})
-	echo -en " $price"
-	str_repeat " " `expr 8 - ${#price}`
+	printPrice=$(printf "%'d\n" $price)
+	echo -en "$printPrice"
+	str_repeat " " `expr 9 - ${#printPrice}`
 }
 
 function update_prices()
@@ -189,8 +271,10 @@ function get_coat_line()
 				str_repeat " " `expr 14 - ${#DRUGS[$key]}`
 				echo -ne "| "${IN_COAT_QTY[$i]}
 				str_repeat " " `expr 13 - ${#IN_COAT_QTY[$i]}`
-				echo -ne "| "${IN_COAT_PRICE[$i]}
-				str_repeat " " `expr 12 - ${#IN_COAT_PRICE[$i]}`
+				price=${IN_COAT_PRICE[$i]}
+				printPrice=$(printf "%'d\n" $price)
+				echo -ne "| "$printPrice
+				str_repeat " " `expr 12 - ${#printPrice}`
 				echo -ne "|  |"
 			fi
 			i=`expr $i + 1`
@@ -357,7 +441,7 @@ function new_game()
 	DAY=1
 	CASH=150000
 	DEBT=150000
-	DEBT_INTEREST=1.24
+	DEBT_INTEREST=1.08
 	BANK=0
 	HEALTH=100
 	SELECTED_LOCATION=0
@@ -370,19 +454,58 @@ function new_game()
 	game
 }
 
+function end_game()
+{
+	if [ ! -f /tmp/highscore.src ]; then
+		touch /tmp/highscore.src
+	fi
+
+	MSG=("You finished the game! Hurray :-p")
+	tmpName=$(echo $NAME | tr " " ".")
+	echo $tmpName"="$CASH >> /tmp/highscore.src
+
+	clear
+	game_header
+	echo '|                                                                                                    |'
+	echo '|              __      __  ______   __    __        __       __   ______   __    __                  |'
+	echo '|             /  \    /  |/      \ /  |  /  |      /  |  _  /  | /      \ /  \  /  |                 |'
+	echo '|             $$  \  /$$//$$$$$$  |$$ |  $$ |      $$ | / \ $$ |/$$$$$$  |$$  \ $$ |                 |'
+	echo '|              $$  \/$$/ $$ |  $$ |$$ |  $$ |      $$ |/$  \$$ |$$ |  $$ |$$$  \$$ |                 |'
+	echo '|               $$  $$/  $$ |  $$ |$$ |  $$ |      $$ /$$$  $$ |$$ |  $$ |$$$$  $$ |                 |'
+	echo '|                $$$$/   $$ |  $$ |$$ |  $$ |      $$ $$/$$ $$ |$$ |  $$ |$$ $$ $$ |                 |'
+	echo '|                 $$ |   $$ \__$$ |$$ \__$$ |      $$$$/  $$$$ |$$ \__$$ |$$ |$$$$ |                 |'
+	echo '|                 $$ |   $$    $$/ $$    $$/       $$$/    $$$ |$$    $$/ $$ | $$$ |                 |'
+	echo '|                 $$/     $$$$$$/   $$$$$$/        $$/      $$/  $$$$$$/  $$/   $$/                  |'
+	echo '|                                                                                                    |'
+	echo '|----------------------------------------------------------------------------------------------------|'
+	highscore_list
+	footer
+	echo ''
+	read -p "Press any key to return to menu..." any
+	menu
+}
+
 function new_day()
 {
 	MSG=()
 	DAY=`expr $DAY + 1`
-	if [ "$DEBT" -gt "0" ]; then
-		if [ "$DAY" -eq "$END_DAY" ]; then
+	
+	if [ "$DAY" -eq "$END_DAY" ]; then
+		if [ "$DEBT" -gt "0" ]; then
 			MSG=("You got stabbed and killed by your loanshark...")
 			did_die
+		else
+			end_game
 		fi
+	fi
+	if [ "$DEBT" -gt "0" ]; then
 		newDebt=$(bc <<< "$DEBT * $DEBT_INTEREST")
 		newDebt=$(echo $newDebt|cut -f1 -d".")
 		DEBT=$newDebt
 	fi
+	quoteVal=$((RANDOM%${#QUOTES[@]}+0))
+	selQ=${QUOTES[$quoteVal]}
+	QUOTE=$selQ
 }
 
 function your_dead()
@@ -419,7 +542,60 @@ function your_dead()
 
 function do_fight()
 {
-	HEALTH=`expr $HEALTH - 35`
+	LOSS=50
+	fight_type=$((RANDOM%4+0))
+
+	if [ "$fight_type" -eq "0" ]; then
+		MSG+=("You meet 3 the cops in an alley and got shot, but you barely got away...")
+		LOSS=55
+	elif [ "$fight_type" -eq "1" ]; then
+		MSG+=("A rivaling druglord did a drive-by on your house with a uzi...")
+		LOSS=40
+	elif [ "$fight_type" -eq "2" ]; then
+		MSG+=("Your girlfriend caught you cheating with her best friend and stabbed you in the leg...")
+		LOSS=28
+	elif [ "$fight_type" -eq "3" ]; then
+		MSG+=("You tried to sell your shit in a bad neighbourhood and got punshed in the face...")
+		LOSS=10
+	fi
+	
+	if [ "$HAS_GATLINGGUN" -eq "1" ]; then
+		LOSS=0
+		MSG+=("But that didn't matter, because your gatlinggun blew them to peaces :-p")
+	elif [ "$HAS_MACHINEGUN" -eq "1" ]; then
+		loss_reduction=$(bc <<< "scale=2;$LOSS/100*50")
+		loss_reduction=$(echo $loss_reduction|cut -f1 -d".")
+		LOSS=`expr $LOSS - $loss_reduction`
+		MSG+=("Lucky you for buying that machinegun...saved you bigtime!")
+	elif [ "$HAS_PISTOL" -eq "1" ]; then
+		loss_reduction=$(bc <<< "scale=2;$LOSS/100*25")
+		loss_reduction=$(echo $loss_reduction|cut -f1 -d".")
+		LOSS=`expr $LOSS - $loss_reduction`
+		MSG+=("You pistol magazine only contained 5 bullets, but you got em' good ;-)")
+	elif [ "$HAS_KNIFE" -eq "1" ]; then
+		msg_type=$((RANDOM%4+0))
+		loss_reduction=$(bc <<< "scale=2;$LOSS/100*10")
+		loss_reduction=$(echo $loss_reduction|cut -f1 -d".")
+		LOSS=`expr $LOSS - $loss_reduction`
+		if [ "$msg_type" -eq "0" ]; then
+			MSG+=("Luckaly you had a knife and could fight back!")
+		elif [ "$msg_type" -eq "1" ]; then
+			MSG+=("Thank god you bought that knife!")
+		elif [ "$msg_type" -eq "2" ]; then
+			MSG+=("But you took up your knife and stabbed hard back!")
+		elif [ "$msg_type" -eq "3" ]; then
+			MSG+=("You stabbed the bastard!")
+		fi
+	fi
+
+	if [ "$HAS_BODYARMOR" -eq "1" ]; then 
+		loss_reduction=$(bc <<< "scale=2;$LOSS/100*$BODYARMOR_REDUSE_RATE")
+		loss_reduction=$(echo $loss_reduction|cut -f1 -d".")
+		LOSS=`expr $LOSS - $loss_reduction`
+		HAS_BODYARMOR=0
+	fi
+
+	HEALTH=`expr $HEALTH - $LOSS`
 	if [ $HEALTH -le 0 ]; then
 		HEALTH=0
 		MSG="You died a lonely horrible death..."
@@ -433,6 +609,64 @@ function has_fight()
 	rand=$((RANDOM%10+0))
 	if [ $rand = $fightVal ]; then 
 		do_fight
+	fi
+}
+
+function robbed()
+{
+	if [ "${#IN_COAT[@]}" -gt "0" ]; then
+		drugCount=${#IN_COAT[@]}
+		what_drug=$((RANDOM%$drugCount+0))
+		drugNum=${IN_COAT[$what_drug]}
+		drugName=${DRUGS[$drugNum]}
+		drugQty=${IN_COAT_QTY[$what_drug]}
+		rand=$((RANDOM%2+0))
+		if [ "$rand" -eq "0" ]; then
+			robbed_amount=$((RANDOM%$drugQty+1))
+			MSG+=("You got robbed and $robbed_amount of your $drugName got stolen...")
+		elif [ "$rand" -eq "1" ]; then
+			robbed_amount=$drugQty
+			MSG+=("You got robbed and all your $drugName got stolen...")
+		fi
+		tempInCoat=()
+		tempInCoatQty=()
+		tempInCoatPrice=()
+		
+		for key in "${!IN_COAT[@]}"; do
+			if [ "$what_drug" = "$key" ]; then
+				avilableQty=${IN_COAT_QTY[$key]}
+				if [ "$avilableQty" -ne "$robbed_amount" ]; then 
+					tempInCoat+=("${IN_COAT[$key]}")
+					newQty=`expr $avilableQty - $robbed_amount`
+					tempInCoatQty+=("$newQty")
+					tempInCoatPrice+=("${IN_COAT_PRICE[$key]}")
+				fi
+			else
+				tempInCoat+=("${IN_COAT[$key]}")
+				tempInCoatQty+=("${IN_COAT_QTY[$key]}")
+				tempInCoatPrice+=("${IN_COAT_PRICE[$key]}")
+			fi
+		done
+		IN_COAT=(${tempInCoat[@]})
+	    IN_COAT_QTY=(${tempInCoatQty[@]})
+	    IN_COAT_PRICE=(${tempInCoatPrice[@]})
+
+		TRENCHCOAT_SPACE_USED=`expr $TRENCHCOAT_SPACE_USED - $robbed_amount`
+	else
+		robbed_amount=$((RANDOM%$CASH+0))
+		if [ "$robbed_amount" -gt "0" ]; then
+			MSG+=("Some dirty cops demanded a bribe for \$$robbed_amount, or they would have killed you!")
+			CASH=`expr $CASH - $robbed_amount`
+		fi
+	fi
+}
+
+function got_robbed()
+{
+	robbedVal=5
+	rand=$((RANDOM%20+0))
+	if [ $rand = $robbedVal ]; then 
+		robbed
 	fi
 }
 
@@ -450,11 +684,15 @@ function travel()
 						#DAY=`expr $DAY + 1`
 						new_day
 						has_fight
+						got_robbed
 						break
 					fi
 				else
 					echo "You're already in ${LOCATIONS[$loc]}.."
 				fi
+			;;
+			* )
+				break
 			;;
 	    esac
 	done
@@ -467,9 +705,14 @@ function buy_drug()
 	while true; do
 	    read -p "Select drug [0-$num]:" drug
 	    case $drug in
-	        [0-9]* ) 
-				if [ $drug -ge 0 -a $drug -le $num ]; then
-					SELECTED_DRUG=$drug
+	        * ) 
+				if is_numeric $drug; then
+					if [ $drug -ge 0 -a $drug -le $num ]; then
+						SELECTED_DRUG=$drug
+						break
+					fi
+				else
+					read -p 'Not a number! Press any key...' any
 					break
 				fi
 			;;
@@ -484,9 +727,14 @@ function sell_drug()
 	while true; do
 	    read -p "Select drug [0-$num]:" drug
 	    case $drug in
-	        [0-9]* ) 
-				if [ $drug -ge 0 -a $drug -le $num ]; then
-					SELECTED_DRUG=$drug
+	        * ) 
+				if is_numeric $drug; then
+					if [ $drug -ge 0 -a $drug -le $num ]; then
+						SELECTED_DRUG=$drug
+						break
+					fi
+				else
+					read -p 'Not a number! Press any key...' any
 					break
 				fi
 			;;
@@ -529,6 +777,7 @@ function buy_qty()
 	num=${#DRUGS[@]}
 	num=`expr $num - 1`
 	price=$(eval echo "\${d"$DAY"["$SELECTED_DRUG"]}")
+	printPrice=$(printf "%'d\n" $price)
 	drugname=${DRUGS[$SELECTED_DRUG]}
 
 	maxQty=$(bc <<< "scale=2;$CASH/$price")
@@ -545,63 +794,68 @@ function buy_qty()
 		if [ "$TRENCHCOAT_SPACE_AVAILABLE" -le "$maxQty" ]; then
 			maxQty=$TRENCHCOAT_SPACE_AVAILABLE
 		fi
-		echo "Current price for '$drugname' \$$price"
+		echo "Current price for '$drugname' \$$printPrice"
 		while true; do
 		    read -p "Select qty [0-$maxQty]:" qty
 		    case $qty in
-		        [0-9]* ) 
-					if [ $qty -gt 0 -a $qty -le $maxQty ]; then
-						TRENCHCOAT_SPACE_USED=`expr $TRENCHCOAT_SPACE_USED + $qty`
-						total=$(bc <<< "$qty * $price")
+		        * ) 
+					if is_numeric $qty; then 
+						if [ $qty -gt 0 -a $qty -le $maxQty ]; then
+							TRENCHCOAT_SPACE_USED=`expr $TRENCHCOAT_SPACE_USED + $qty`
+							total=$(bc <<< "$qty * $price")
 
-						if [ $(in_array "${IN_COAT[@]}" "$SELECTED_DRUG") == "y" ]; then
-						    tempInCoat=()
-						    tempInCoatQty=()
-						    tempInCoatPrice=()
-						    doUpdate=0
+							if [ $(in_array "${IN_COAT[@]}" "$SELECTED_DRUG") == "y" ]; then
+							    tempInCoat=()
+							    tempInCoatQty=()
+							    tempInCoatPrice=()
+							    doUpdate=0
 
-						    for((i=0;i<${#IN_COAT[@]};i++)); do
-						    	key=$i
-						    	drugValue=${IN_COAT[$i]}
-						    	qtyValue=${IN_COAT_QTY[$i]}
-						    	priceValue=${IN_COAT_PRICE[$i]}
-						    	
-						    	if [ "$drugValue" = "$SELECTED_DRUG" ]; then
-						    		if [ "$price" -eq "$priceValue" ]; then
-						    			doUpdate=1
-						    			tempInCoat+=("$drugValue")
-						    			newQty=`expr $qty + $qtyValue`
-							    		tempInCoatQty+=("$newQty")
-							    		tempInCoatPrice+=("$priceValue")
+							    for((i=0;i<${#IN_COAT[@]};i++)); do
+							    	key=$i
+							    	drugValue=${IN_COAT[$i]}
+							    	qtyValue=${IN_COAT_QTY[$i]}
+							    	priceValue=${IN_COAT_PRICE[$i]}
+							    	
+							    	if [ "$drugValue" = "$SELECTED_DRUG" ]; then
+							    		if [ "$price" -eq "$priceValue" ]; then
+							    			doUpdate=1
+							    			tempInCoat+=("$drugValue")
+							    			newQty=`expr $qty + $qtyValue`
+								    		tempInCoatQty+=("$newQty")
+								    		tempInCoatPrice+=("$priceValue")
+								    	else
+								    		tempInCoat+=("$drugValue")
+								    		tempInCoatQty+=("$qtyValue")
+								    		tempInCoatPrice+=("$priceValue")
+							    		fi
+
 							    	else
 							    		tempInCoat+=("$drugValue")
 							    		tempInCoatQty+=("$qtyValue")
 							    		tempInCoatPrice+=("$priceValue")
-						    		fi
+							    	fi
+							    done
 
-						    	else
-						    		tempInCoat+=("$drugValue")
-						    		tempInCoatQty+=("$qtyValue")
-						    		tempInCoatPrice+=("$priceValue")
-						    	fi
-						    done
-
-						    if [ "$doUpdate" = "0" ]; then
-						    	tempInCoat+=("$SELECTED_DRUG")
-						    	tempInCoatQty+=("$qty")
-						    	tempInCoatPrice+=("$price")
-						    fi
-						    IN_COAT=(${tempInCoat[@]})
-						    IN_COAT_QTY=(${tempInCoatQty[@]})
-						    IN_COAT_PRICE=(${tempInCoatPrice[@]})
-						else
-							IN_COAT+=("$SELECTED_DRUG")
-							IN_COAT_QTY+=("$qty")
-							IN_COAT_PRICE+=("$price")
+							    if [ "$doUpdate" = "0" ]; then
+							    	tempInCoat+=("$SELECTED_DRUG")
+							    	tempInCoatQty+=("$qty")
+							    	tempInCoatPrice+=("$price")
+							    fi
+							    IN_COAT=(${tempInCoat[@]})
+							    IN_COAT_QTY=(${tempInCoatQty[@]})
+							    IN_COAT_PRICE=(${tempInCoatPrice[@]})
+							else
+								IN_COAT+=("$SELECTED_DRUG")
+								IN_COAT_QTY+=("$qty")
+								IN_COAT_PRICE+=("$price")
+							fi
+							CASH=`expr $CASH - $total`
 						fi
-						CASH=`expr $CASH - $total`
+						break
+					else
+						read -p 'Invalid quantity selected! Press any key...' any
 					fi
-					break
+					
 				;;
 		    esac
 		done
@@ -617,40 +871,47 @@ function sell_qty()
 	buyPrice=${IN_COAT_PRICE[$SELECTED_DRUG]}
 	sellPrice=$(eval echo "\${d"$DAY"["$drugNum"]}")
 
-	echo "$drugName Bought for: \$$buyPrice - Sell for: \$$sellPrice"
+	printBuyPrice=$(printf "%'d\n" $buyPrice)
+	printSellPrice=$(printf "%'d\n" $sellPrice)
+
+	echo "$drugName Bought for: \$$printBuyPrice - Sell for: \$$printSellPrice"
 	while true; do
 	    read -p "Select qty [0-$selQty]:" qty
 	    case $qty in
-	        [0-9]* ) 
-				if [ $qty -gt 0 -a $qty -le $selQty ]; then
-					total=$(bc <<< "$qty * $sellPrice")
-					
-					tempInCoat=()
-					tempInCoatQty=()
-					tempInCoatPrice=()
-					
-					for key in "${!IN_COAT[@]}"; do
-						if [ "$SELECTED_DRUG" = "$key" ]; then
-							avilableQty=${IN_COAT_QTY[$key]}
-							if [ "$avilableQty" -ne "$qty" ]; then 
+	        * ) 
+				if is_numeric $qty; then
+					if [ $qty -gt 0 -a $qty -le $selQty ]; then
+						total=$(bc <<< "$qty * $sellPrice")
+						
+						tempInCoat=()
+						tempInCoatQty=()
+						tempInCoatPrice=()
+						
+						for key in "${!IN_COAT[@]}"; do
+							if [ "$SELECTED_DRUG" = "$key" ]; then
+								avilableQty=${IN_COAT_QTY[$key]}
+								if [ "$avilableQty" -ne "$qty" ]; then 
+									tempInCoat+=("${IN_COAT[$key]}")
+									newQty=`expr $avilableQty - $qty`
+									tempInCoatQty+=("$newQty")
+									tempInCoatPrice+=("${IN_COAT_PRICE[$key]}")
+								fi
+							else
 								tempInCoat+=("${IN_COAT[$key]}")
-								newQty=`expr $avilableQty - $qty`
-								tempInCoatQty+=("$newQty")
+								tempInCoatQty+=("${IN_COAT_QTY[$key]}")
 								tempInCoatPrice+=("${IN_COAT_PRICE[$key]}")
 							fi
-						else
-							tempInCoat+=("${IN_COAT[$key]}")
-							tempInCoatQty+=("${IN_COAT_QTY[$key]}")
-							tempInCoatPrice+=("${IN_COAT_PRICE[$key]}")
-						fi
-					done
-					IN_COAT=(${tempInCoat[@]})
-				    IN_COAT_QTY=(${tempInCoatQty[@]})
-				    IN_COAT_PRICE=(${tempInCoatPrice[@]})
-					CASH=`expr $CASH + $total`
-					TRENCHCOAT_SPACE_USED=`expr $TRENCHCOAT_SPACE_USED - $qty`
+						done
+						IN_COAT=(${tempInCoat[@]})
+					    IN_COAT_QTY=(${tempInCoatQty[@]})
+					    IN_COAT_PRICE=(${tempInCoatPrice[@]})
+						CASH=`expr $CASH + $total`
+						TRENCHCOAT_SPACE_USED=`expr $TRENCHCOAT_SPACE_USED - $qty`
+					fi
+					break
+				else
+					read -p 'Invalid quantity selected! Press any key...' any
 				fi
-				break
 			;;
 	    esac
 	done
@@ -673,6 +934,8 @@ function dump()
 					IN_COAT=()
 				    IN_COAT_QTY=()
 				    IN_COAT_PRICE=()
+				    TRENCHCOAT_SPACE_USED=0
+
 					break
 				;;
 				n* )
@@ -696,18 +959,32 @@ function get_coat() {
 
 function buy()
 {
-	if [ "$TRENCHCOAT_SPACE_USED" -eq "$TRENCHCOAT_SPACE" ]; then
-		read -p "Your trench coat is full! Press any key..." any
-		break
+	if [ "$CASH" -ge "$LOWEST_PRICE" ]; then
+		if [ "$TRENCHCOAT_SPACE_USED" -eq "$TRENCHCOAT_SPACE" ]; then
+			read -p "Your trench coat is full! Press any key..." any
+			break
+		fi
+		buy_drug
+		if is_numeric $SELECTED_DRUG; then
+			buy_qty
+		fi
+	else
+		read -p "You don't have enough money to buy drugs! Press any key..." any
 	fi
-	buy_drug
-	buy_qty
+	SELECTED_DRUG=
 }
 
 function sell()
 {
-	sell_drug
-	sell_qty
+	if [ "${#IN_COAT[@]}" -gt "0" ]; then
+		sell_drug
+		if is_numeric $SELECTED_DRUG; then
+			sell_qty
+		fi
+	else
+		read -p "You don't have anything to sell! Press any key..." any
+	fi
+	SELECTED_DRUG=
 }
 
 function get_health()
@@ -747,10 +1024,6 @@ function get_status()
 			echo -ne "|\n"
 		done
 	fi
-	#echo -ne '|  "'$MSG'"'
-	#msgLength=${#MSG}
-	#str_repeat " " `expr 96 - $msgLength`
-	#echo -ne "|\n"
 	echo '|                                                                                                    |'
 	echo '|----------------------------------------------------------------------------------------------------|'
 }
@@ -794,7 +1067,7 @@ function get_gameplay()
 	str_repeat " " `expr 50 - ${#trenchCoatString}`
 	echo -ne "$trenchCoatString   |\n"
 	echo '|  ----------------------------------           ---------------------------------------------------  |'
-	echo '|  |    | Drug          | Price     |           |    | Drug          | Qty          | Price       |  |'
+	echo '|  |    | Drug          | Price $   |           |    | Drug          | Qty          | Price $     |  |'
 	echo '|  |--------------------------------|           |-------------------------------------------------|  |'
 	get_drugs
 	echo '|  ----------------------------------           ---------------------------------------------------  |'
@@ -830,7 +1103,7 @@ function game_store_header()
 function get_store_menu()
 {
 	echo '|                                                                                                    |'
-	echo '|     ==[ Welcome to our department mega-store ]===                                                  |'
+	echo '|     ===[ Welcome to our department mega-store ]===                                                 |'
 	echo '|                                                                                 ____________       |'
 	echo '|    Trenchcoat upgrades:                                                        |.----------.|      |'
 	echo '|    [1] Increase by 50 for $150,000                                             || ___  ___ ||      |'
@@ -1030,11 +1303,11 @@ function loan()
 							limit4To=$max
 
 							if [ "$amount" -ge "$limit1From" -a "$amount" -le "$limit1To" ]; then
-								interestRate=28
-							elif [ "$amount" -ge "$limit2From" -a "$amount" -le "$limit2To" ]; then
-								interestRate=20
-							elif [ "$amount" -ge "$limit3From" -a "$amount" -le "$limit3To" ]; then
 								interestRate=14
+							elif [ "$amount" -ge "$limit2From" -a "$amount" -le "$limit2To" ]; then
+								interestRate=12
+							elif [ "$amount" -ge "$limit3From" -a "$amount" -le "$limit3To" ]; then
+								interestRate=10
 							elif [ "$amount" -ge "$limit4From" -a "$amount" -le "$limit4To" ]; then
 								interestRate=8
 							fi
@@ -1072,12 +1345,13 @@ function pay_back()
 	if [ "$DEBT" -ne "0" ]; then
 		if [ "$DEBT" -gt "$CASH" ]; then
 			max=$CASH
-		elif [ "$CASH" -gt "$DEBT" ]; then
+		elif [ "$CASH" -ge "$DEBT" ]; then
 			max=$DEBT
 		fi
+		printMax=$(printf "%'d\n" $max)
 		echo -e "Hi, so nice of you to remember me...\n"
 		while true; do
-		    read -p "How much do you wanna pay back? [0-$max]:" payback
+		    read -p "How much do you wanna pay back? [0-$printMax]:" payback
 		    case $payback in
 		        [0-9]* ) 
 					if [ "$payback" -ne "0" ]; then
